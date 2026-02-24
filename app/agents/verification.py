@@ -5,6 +5,9 @@ import json
 import cv2
 import numpy as np
 
+# Resolve paths relative to the repo root
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 class VerificationAgent:
     def __init__(self):
         url: str = os.environ.get("SUPABASE_URL")
@@ -21,8 +24,8 @@ class VerificationAgent:
         # Load Zones
         self.zones_config = {}
         paths = [
-            "parking_zones.json", 
-            r"d:\Non_Academic\Project\Smart_Parking_Traffic_Test\AIML_Assignment\parking_zones.json"
+            os.path.join(_REPO_ROOT, "parking_zones.json"),
+            "parking_zones.json",
         ]
         for p in paths:
             if os.path.exists(p):

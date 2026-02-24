@@ -5,6 +5,10 @@ import numpy as np
 from ultralytics import YOLO
 import threading
 import easyocr
+import os
+
+# Resolve paths relative to the repo root (two levels up from this file)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class VisionAgent:
     """
@@ -25,14 +29,16 @@ class VisionAgent:
         if self._model is None:
             with self._lock:
                 if self._model is None:
-                    # UPDATED: Use Custom Trained Model
-                    model_path = r"d:\Non_Academic\Project\Smart_Parking_Traffic_Test\AI_Model\best.pt"
-                    print(f"[VisionAgent] Loading Custom YOLO Model from {model_path}...")
+                    # Try custom model (best.pt) in repo root, fallback to yolov8n.pt
+                    model_path = os.path.join(_REPO_ROOT, "best.pt")
+                    if not os.path.exists(model_path):
+                        model_path = os.path.join(_REPO_ROOT, "yolov8n.pt")
+                    print(f"[VisionAgent] Loading YOLO Model from {model_path}...")
                     try:
                         self._model = YOLO(model_path)
-                        print("[VisionAgent] Custom Model Loaded.")
+                        print("[VisionAgent] Model Loaded.")
                     except Exception as e:
-                        print(f"[VisionAgent] Failed to load custom model: {e}. Fallback to yolov8n.pt")
+                        print(f"[VisionAgent] Failed to load model: {e}. Fallback to yolov8n.pt")
                         self._model = YOLO('yolov8n.pt')
         return self._model
 
