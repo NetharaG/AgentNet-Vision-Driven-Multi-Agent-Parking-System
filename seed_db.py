@@ -1,46 +1,49 @@
-import asyncio
-from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy.orm import sessionmaker
-from app.db.database import engine, init_db
-from app.db.models import ParkingSlot
+import os
+from dotenv import load_dotenv
+load_dotenv()
+from supabase import create_client, Client
+import sys
 
-async def seed_data():
-    """
-    Populates the database with initial parking slots.
-    """
-    print("Initializing Database...")
-    await init_db()
+def seed_database():
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
     
-    async_session = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    
-    async with async_session() as session:
-        # Check if data exists
-        from sqlmodel import select
-        result = await session.exec(select(ParkingSlot))
-        if result.first():
-            print("Database already seeded.")
-            return
+    if not url or not key:
+        print("ERROR: Missing Credentials in .env")
+        return
 
-        print("Seeding Parking Slots...")
-        slots = []
+    try:
+        supabase: Client = create_client(url, key)
+        print("Client Initialized.")
         
-        # 10 Small Slots
-        for i in range(1, 11):
-            slots.append(ParkingSlot(id=i, size="small", coordinates=f"1,{i},0"))
+        # 1. Clear Existing (Optional, be careful)
+        print("Clearing existing slots (if any)...")
+        # supabase.table("parking_slots").delete().neq("id", "dummy").execute() # Simple clear
+        
+        # 2. Seed Data
+        slots = [
+            {'id': 'A1', 'size_type': 'Small', 'status': 'FREE'},
+            {'id': 'A2', 'size_type': 'Small', 'status': 'FREE'},
+            {'id': 'A3', 'size_type': 'Small', 'status': 'FREE'},
+            {'id': 'A4', 'size_type': 'Small', 'status': 'FREE'},
             
-        # 10 Medium Slots
-        for i in range(11, 21):
-            slots.append(ParkingSlot(id=i, size="medium", coordinates=f"2,{i-10},0"))
+            {'id': 'B1', 'size_type': 'Medium', 'status': 'FREE'},
+            {'id': 'B2', 'size_type': 'Medium', 'status': 'FREE'},
+            {'id': 'B3', 'size_type': 'Medium', 'status': 'FREE'},
+            {'id': 'B4', 'size_type': 'Medium', 'status': 'FREE'},
             
-        # 5 Large Slots
-        for i in range(21, 26):
-            slots.append(ParkingSlot(id=i, size="large", coordinates=f"3,{i-20},0"))
-            
-        session.add_all(slots)
-        await session.commit()
-        print(f"✅ Successfully added {len(slots)} parking slots.")
+            {'id': 'C1', 'size_type': 'Large', 'status': 'FREE'},
+            {'id': 'C2', 'size_type': 'Large', 'status': 'FREE'},
+            {'id': 'C3', 'size_type': 'Large', 'status': 'FREE'},
+            {'id': 'C4', 'size_type': 'Large', 'status': 'FREE'},
+        ]
+        
+        print(f"Seeding {len(slots)} slots...")
+        res = supabase.table("parking_slots").upsert(slots).execute()
+        print(f"Success! Inserted/Updated slots.")
+        
+    except Exception as e:
+        print(f"\nCRITICAL ERROR: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(seed_data())
+    seed_database()

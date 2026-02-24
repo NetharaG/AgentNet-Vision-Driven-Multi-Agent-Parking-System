@@ -16,8 +16,6 @@ class VisionAgent:
     _lock = threading.Lock()
 
     def __init__(self):
-        # Lazy load or Init on startup? 
-        # Ideally simpler to init here, but might block main thread briefly.
         pass
 
     def _get_model(self):
@@ -27,10 +25,15 @@ class VisionAgent:
         if self._model is None:
             with self._lock:
                 if self._model is None:
-                    print("[VisionAgent] Loading YOLOv8n model...")
-                    # 'yolov8n.pt' will auto-download on first run
-                    self._model = YOLO('yolov8n.pt') 
-                    print("[VisionAgent] Model Loaded.")
+                    # UPDATED: Use Custom Trained Model
+                    model_path = r"d:\Non_Academic\Project\Smart_Parking_Traffic_Test\AI_Model\best.pt"
+                    print(f"[VisionAgent] Loading Custom YOLO Model from {model_path}...")
+                    try:
+                        self._model = YOLO(model_path)
+                        print("[VisionAgent] Custom Model Loaded.")
+                    except Exception as e:
+                        print(f"[VisionAgent] Failed to load custom model: {e}. Fallback to yolov8n.pt")
+                        self._model = YOLO('yolov8n.pt')
         return self._model
 
     def _get_reader(self):
@@ -49,123 +52,199 @@ class VisionAgent:
         """
         Runs inference on the provided image bytes.
         """
+        if not image_bytes:
+             await asyncio.sleep(0.5)
+             return {"license_plate": f"AI-{gate_id[-2:]}-{np.random.randint(1000,9999)}", "vehicle_type": "medium", "confidence": "0.98"}
+
         model = self._get_model()
         reader = self._get_reader()
-        
-        # Determine vehicle type through inference
-        vehicle_type = "unknown"
-        detected_plate = f"AI-{gate_id[-2:]}-{np.random.randint(1000,9999)}" # Fallback
-        confidence = 0.0
-        
-        if image_bytes:
-            # Convert bytes to numpy array for OpenCV
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            # Run Inference (Run in executor to avoid blocking async loop)
-            # YOLO call is blocking, so we wrap it.
-            loop = asyncio.get_running_loop()
-            
-            # 1. YOLO Detection
-            results = await loop.run_in_executor(None, lambda: model(img, verbose=False))
-            
-            # Analyze results
-            # COCO Classes: 2=car, 3=motorcycle, 5=bus, 7=truck
-            target_classes = {2: 'small', 3: 'small', 5: 'large', 7: 'medium'} # Mapping to generic sizes
-            
-            detected_obj = None
-            max_conf = 0.0
+        loop = asyncio.get_running_loop()
 
-            if results:
-                for r in results:
-                    boxes = r.boxes
-                    for box in boxes:
-                        cls_id = int(box.cls[0])
-                        conf = float(box.conf[0])
+        # Run Heavy computation in a thread pool to avoid blocking async loop
+        result = await loop.run_in_executor(None, self._analyze_sync, model, reader, image_bytes)
+        
+        return result
+
+    def _analyze_sync(self, model, reader, image_bytes) -> Dict[str, Any]:
+        """
+        Synchronous pipeline for CPU-bound tasks (YOLO post-processing + OCR)
+        """
+        # 1. Decode Image
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return {"error": "Invalid image"}
+
+        # 2. YOLO Inference
+        # Note: model() is technically blocking, usually fast on GPU, but CPU might take 100-200ms
+        results = model(img, verbose=False)
+        
+        best_plate_text = ""
+        max_conf = 0.0
+        vehicle_type = "car"
+
+        if results:
+            for r in results:
+                boxes = r.boxes
+                for box in boxes:
+                    conf = float(box.conf[0])
+                    if conf > max_conf:
+                        max_conf = conf
                         
-                        if cls_id in target_classes and conf > max_conf:
-                            max_conf = conf
-                            vehicle_type = target_classes[cls_id]
-                            detected_obj = model.names[cls_id]
+                        # Crop Plate
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                        
+                        h, w, _ = img.shape
+                        x1, y1 = max(0, x1), max(0, y1)
+                        x2, y2 = min(w, x2), min(h, y2)
+                        
+                        plate_crop = img[y1:y2, x1:x2]
+                        if plate_crop.size == 0: continue
 
-            print(f"[VisionAgent] Detected: {detected_obj} ({max_conf:.2f}) -> Size: {vehicle_type}")
-            
-            # 2. ANPR (EasyOCR)
-            # Run OCR on the full image for simplicity (or crop if we had bounding boxes for plates)
-            ocr_results = await loop.run_in_executor(None, lambda: reader.readtext(img, detail=0))
-            
-            # Filter results for best candidate
+                        # Preprocessing
+                        gray = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
+                        # Upscale for better OCR accuracy
+                        gray = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+                        
+                        # OCR
+                        ocr_results = reader.readtext(gray, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+                        ocr_results.sort(key=lambda x: x[2], reverse=True) # Sort by confidence
+                        
+                        for (_, text, _) in ocr_results:
+                            clean = ''.join(e for e in text if e.isalnum()).upper()
+                            
+                            # Correction Attempt
+                            corrected = self._correct_plate_format(clean)
+                            if corrected:
+                                best_plate_text = corrected
+                                break # Found a perfect match
+                            
+                            # Heuristic Fallback (if > middle confidence)
+                            if len(clean) >= 7 and not best_plate_text:
+                                best_plate_text = clean # Store as backup
+
+        # Fallback to Full Image OCR if YOLO fails significantly
+        if not best_plate_text and max_conf < 0.4:
+            print("[VisionAgent] Low Confidence YOLO. Running Full Image OCR...")
+            gray_full = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            ocr_results = reader.readtext(gray_full, detail=0, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
             for text in ocr_results:
-                clean_text = ''.join(e for e in text if e.isalnum()).upper()
-                
-                # Heuristic: Check if close to desired length (10)
-                if len(clean_text) >= 9:
-                    # Attempt Correction to TTNNTTNNNN
-                    corrected = self._correct_plate_format(clean_text)
-                    if corrected:
-                        detected_plate = corrected
-                        print(f"[VisionAgent] ANPR Success (Corrected): {detected_plate}")
-                        break
-                    
-                    # Original logic if fallback needed
-                    if len(clean_text) > 4 and any(char.isdigit() for char in clean_text):
-                        detected_plate = clean_text # Fallback to raw if correction fails but looks okay
-                        print(f"[VisionAgent] ANPR Raw (Fallback): {detected_plate}")
-                        break
-                    
-        else:
-            # Fallback if no image provided (Simulation)
-            await asyncio.sleep(0.5)
-            vehicle_type = "medium"
+                clean = ''.join(e for e in text if e.isalnum()).upper()
+                corrected = self._correct_plate_format(clean)
+                if corrected:
+                    best_plate_text = corrected
+                    break
+        
+        # Optimized: Always return default dimensions (User Request: No vision-based sizing)
+        best_dims = {"width_m": 1.8, "size_class": "Medium"} 
 
         return {
-            "license_plate": detected_plate, 
-            "vehicle_type": vehicle_type, 
-            "confidence": f"{max_conf:.2f}" if image_bytes else "0.98"
+            "license_plate": best_plate_text if best_plate_text else "UNKNOWN",
+            "vehicle_type": vehicle_type,
+            "confidence": f"{max_conf:.2f}",
+            "dimensions": best_dims
         }
 
     def _correct_plate_format(self, text: str) -> str | None:
         """
-        Enforce Strict Format: TTNNTTNNNN (10 Chars)
+        Enforce Strict Format: TTNNTTNNNN (10 Chars) -> Output: TT NN TT NNNN
         T: Text (A-Z)
         N: Number (0-9)
         
-        Attempts to convert confusing chars if they appear in wrong place.
+        Robustly handles length mismatch (noise) and swaps chars based on position.
         """
-        # Truncate or Pad? For now, strict 10 or nothing? 
-        # Requirement says "In this format". 
-        if len(text) != 10:
-             return None 
-             
-        # Mapping
-        char_to_int = {'O': '0', 'I': '1', 'J': '3', 'L': '1', 'Z': '2', 'S': '5', 'G': '6', 'B': '8', 'Q': '0', 'D': '0', 'A': '4'}
-        int_to_char = {'0': 'O', '1': 'I', '3': 'J', '2': 'Z', '5': 'S', '6': 'G', '8': 'B', '4': 'A'}
+        # Clean cleanup first
+        text = ''.join(e for e in text if e.isalnum()).upper()
+        print(f"[VisionAgent DEBUG] Correction Input: {text}")
         
-        corrected_chars = []
+        # Mappings
+        text_to_digit = {
+            'O': '0', 'Q': '0', 'D': '0', 'U': '0', 'I': '1', 'L': '1', 'Z': '2', 'S': '5', 'G': '6', 'B': '8', 'A': '4'
+        }
+        digit_to_text = {
+            '0': "O", '1': 'I', '2': 'Z', '5': 'S', '6': 'G', '8': 'B', '4': 'A'
+        }
         
-        # Format Mask: T T N N T T N N N N
-        is_text_pos = [True, True, False, False, True, True, False, False, False, False]
+        structure = [True, True, False, False, True, True, False, False, False, False]
         
-        for i, char in enumerate(text):
-            should_be_text = is_text_pos[i]
+        candidates = []
+        
+        # If length match (10), try direct correction
+        if len(text) == 10:
+            candidates.append(text)
+        
+        # If longer (11-13), try sliding window of 10
+        elif len(text) > 10 and len(text) <= 13:
+            for i in range(len(text) - 9):
+                candidates.append(text[i : i+10])
+                
+        # Also try "IND" removal if not already handled
+        if text.startswith("IND") and len(text) > 3:
+             sub = text[3:]
+             if len(sub) >= 10:
+                 candidates.append(sub[:10])
+
+        best_score = -1
+        best_corrected = None
+        
+        for idx, candidate in enumerate(candidates):
+            current_corrected = []
+            score = 0
+            valid = True
+            print(f"[VisionAgent DEBUG] Candidate {idx}: {candidate}")
             
-            if should_be_text:
-                if char.isdigit():
-                    # Contradiction: Found Number, Need Text
-                    if char in int_to_char:
-                        corrected_chars.append(int_to_char[char])
+            for i, char in enumerate(candidate):
+                expect_text = structure[i]
+                
+                if expect_text: # Indices 0,1, 4,5
+                    if char.isalpha():
+                        # Q is very rare in text positions (State/Series), but O is common.
+                        # Visual similarity implies Q is likely a misread O (dirt/screw).
+                        if char == 'Q':
+                            current_corrected.append('O')
+                            score += 0.9 # Corrected match
+                        else:
+                            current_corrected.append(char)
+                            score += 1.0
+                    elif char.isdigit():
+                        if char in digit_to_text:
+                            current_corrected.append(digit_to_text[char])
+                            score += 0.9 # High confidence correction
+                        else:
+                            print(f"[VisionAgent DEBUG] Fail at {i} (Expect Text): {char}")
+                            valid = False; break
                     else:
-                        corrected_chars.append(char) # Can't fix
-                else:
-                    corrected_chars.append(char) # Correct
+                         valid = False; break
+                else: # Expect Digit # Indices 2,3, 6,7,8,9
+                    if char.isdigit():
+                        current_corrected.append(char)
+                        score += 1.0
+                    elif char.isalpha():
+                        # Explicit user rule: Q -> 0 in number slots
+                        if char == 'Q':
+                            current_corrected.append('0')
+                            score += 1.0 # Treat as almost perfect match due to user rule
+                        elif char in text_to_digit:
+                            current_corrected.append(text_to_digit[char])
+                            score += 0.9 # High confidence correction
+                        else:
+                            print(f"[VisionAgent DEBUG] Fail at {i} (Expect Digit): {char}")
+                            valid = False; break
+                    else:
+                        valid = False; break
+            
+            if valid:
+                print(f"[VisionAgent DEBUG] Valid! Score: {score}")
+                if score > best_score:
+                    best_score = score
+                    best_corrected = "".join(current_corrected)
             else:
-                if char.isalpha():
-                     # Contradiction: Found Text, Need Number
-                    if char in char_to_int:
-                        corrected_chars.append(char_to_int[char])
-                    else:
-                        corrected_chars.append(char) # Can't fix
-                else:
-                    corrected_chars.append(char) # Correct
-                    
-        return "".join(corrected_chars)
+                print(f"[VisionAgent DEBUG] Invalid Candidate")
+                
+        if best_corrected:
+            final = best_corrected
+            return f"{final[:2]} {final[2:4]} {final[4:6]} {final[6:]}"
+            
+        print("[VisionAgent DEBUG] No valid candidates found.")
+        return None
