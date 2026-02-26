@@ -10,10 +10,6 @@ python-multipart
 chromadb
 streamlit
 requests
-# torch --index-url https://download.pytorch.org/whl/cpu # Optional: For smaller CPU-only build
-
-
 easyocr
-
 supabase
 python-dotenv
