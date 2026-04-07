@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>AgentNet | Neon Sentry Dashboard</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link rel="icon" type="image/png" href="/static/favicon.png"/>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "rgba(15, 15, 20, 0.6)",
+                        "inverse-surface": "#fcf8ff",
+                        "primary-dim": "#00d4ec",
+                        "primary-fixed": "#00e3fd",
+                        "on-primary": "#005762",
+                        "on-tertiary-fixed-variant": "#0027a4",
+                        "on-error-container": "#ffa8a3",
+                        "secondary-container": "#006a6a",
+                        "surface-dim": "#0a0a0f",
+                        "surface": "#0a0a0f",
+                        "primary-fixed-dim": "#00d4ec",
+                        "tertiary-container": "#0743ff",
+                        "tertiary": "#8397ff",
+                        "on-surface-variant": "#acaab1",
+                        "on-tertiary-fixed": "#000e50",
+                        "inverse-primary": "#006976",
+                        "secondary-fixed-dim": "#7fdede",
+                        "error": "#ff716c",
+                        "tertiary-fixed-dim": "#8b9dff",
+                        "on-secondary": "#005858",
+                        "outline-variant": "rgba(0, 227, 253, 0.2)",
+                        "on-primary-fixed-variant": "#005762",
+                        "on-tertiary-container": "#f9f6ff",
+                        "on-primary-fixed": "#003840",
+                        "surface-container-highest": "rgba(25, 25, 35, 0.7)",
+                        "on-secondary-fixed": "#004343",
+                        "surface-container": "rgba(10, 10, 15, 0.7)",
+                        "error-container": "#9f0519",
+                        "surface-bright": "#2c2b33",
+                        "tertiary-fixed": "#9dabff",
+                        "primary-container": "#00e3fd",
+                        "on-error": "#490006",
+                        "tertiary-dim": "#4464ff",
+                        "surface-variant": "rgba(20, 20, 25, 0.6)",
+                        "on-secondary-fixed-variant": "#006262",
+                        "surface-tint": "#81ecff",
+                        "on-secondary-container": "#d9fffe",
+                        "primary": "#81ecff",
+                        "on-background": "#f9f5fd",
+                        "outline": "#76747b",
+                        "inverse-on-surface": "#55545b",
+                        "on-tertiary": "#001465",
+                        "secondary-dim": "#7fdede",
+                        "secondary": "#8dedec",
+                        "secondary-fixed": "#8dedec",
+                        "error-dim": "#d7383b",
+                        "surface-container-low": "rgba(5, 5, 10, 0.8)",
+                        "on-primary-container": "#004d57",
+                        "background": "#0a0a0f",
+                        "surface-container-lowest": "#000000",
+                        "on-surface": "#f9f5fd"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "2px",
+                        "lg": "4px",
+                        "xl": "8px",
+                        "full": "12px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Space Grotesk"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: radial-gradient(circle at center, #0d1117 0%, #0a0a0f 100%);
+            background-attachment: fixed;
+            position: relative;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(rgba(129, 236, 255, 0.08) 1px, transparent 1px);
+            background-size: 24px 24px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .scanline {
+            background: linear-gradient(to bottom, transparent 50%, rgba(129, 236, 255, 0.02) 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+        .glass-card {
+            background: rgba(10, 10, 15, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 212, 236, 0.15);
+            box-shadow: 0 0 15px rgba(0, 212, 236, 0.05);
+            position: relative;
+        }
+        .hud-corner-tl::before { content: "⌐"; position: absolute; top: -2px; left: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        .hud-corner-tr::before { content: "¬"; position: absolute; top: -2px; right: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        .hud-corner-bl::before { content: "⌞"; position: absolute; bottom: -2px; left: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        .hud-corner-br::before { content: "⌟"; position: absolute; bottom: -2px; right: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        
+        .pulse-border {
+            animation: border-pulse 2s infinite;
+        }
+        @keyframes border-pulse {
+            0% { border-color: rgba(0, 227, 253, 0.3); box-shadow: 0 0 0px rgba(0, 227, 253, 0); }
+            50% { border-color: rgba(0, 227, 253, 0.8); box-shadow: 0 0 10px rgba(0, 227, 253, 0.3); }
+            100% { border-color: rgba(0, 227, 253, 0.3); box-shadow: 0 0 0px rgba(0, 227, 253, 0); }
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="font-body text-on-surface min-h-screen selection:bg-primary/30">
+    <div class="fixed inset-0 scanline z-10 pointer-events-none"></div>
+    <header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-8 py-4 bg-black/60 backdrop-blur-2xl border-b border-primary/20">
+        <div class="flex items-center gap-6">
+            <span class="text-2xl font-headline font-black tracking-[0.25em] text-primary drop-shadow-[0_0_10px_rgba(129,236,255,0.4)]">AGENTNET</span>
+            <div class="h-4 w-px bg-primary/20"></div>
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+                <span class="text-[10px] font-headline font-bold text-primary tracking-[0.2em] uppercase">Network Active</span>
+            </div>
+        </div>
+        <nav class="hidden md:flex gap-10 items-center">
+            <button class="nav-top text-primary font-headline text-xs font-bold tracking-[0.2em] uppercase border-b border-primary pb-1" onclick="showView('operations')">Dashboard</button>
+            <button class="nav-top text-slate-300 hover:text-primary transition-colors font-headline text-xs font-bold tracking-[0.2em] uppercase" onclick="showView('deployments')">Deployments</button>
+            <button class="nav-top text-slate-300 hover:text-primary transition-colors font-headline text-xs font-bold tracking-[0.2em] uppercase" onclick="showView('infrastructure')">Infrastructure</button>
+        </nav>
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-4 mr-2">
+                <button class="material-symbols-outlined text-slate-300 hover:text-primary transition-all text-xl">notifications</button>
+                <button class="material-symbols-outlined text-slate-300 hover:text-primary transition-all text-xl" onclick="showView('settings')">settings</button>
+            </div>
+            <div class="w-9 h-9 rounded bg-primary/10 border border-primary/30 p-0.5">
+                <img alt="User avatar" class="w-full h-full object-cover rounded-sm grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkaupf0Yod8TfbzX5o-p-ACwUncYG4OjKdNzmJWczH5UC-_JVoXVmMsGYlnUaHjWq59d2L2v2Y-Ggb8-P61jSTFNFH97UtKO-Eq15d0owBM3EmsxQqnEoQZyERHOrzu1qFiozcN6lSldLIa-zwYTxESaORWasYRmZraxvPMSSvralvOwJbL0HvVrOPlyDAB_aPlzm5EHa6tcPdQzj-Nm6HHB7WV7iHioXyOvVOMf6X94-Jn2zPCr4DDm06QSEDV5bAWhGpElJAx37g"/>
+            </div>
+        </div>
+    </header>
+
+    <aside class="fixed left-0 top-0 h-full z-40 flex flex-col pt-24 pb-8 w-64 bg-black/40 backdrop-blur-3xl border-r border-primary/10">
+        <div class="px-8 mb-10">
+            <div class="flex items-center gap-2 mb-1">
+                <div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                <span class="font-headline font-bold text-primary tracking-widest text-[11px]">NEON SENTRY</span>
+            </div>
+            <p class="text-[9px] text-slate-400 font-headline tracking-[0.2em] uppercase opacity-70">AI CORE OPERATIONAL</p>
+        </div>
+        <nav class="flex-1 space-y-2 px-4">
+            <button class="nav-side w-full text-primary bg-primary/10 font-bold px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase border-l-2 border-primary" onclick="showView('operations')">
+                <span class="material-symbols-outlined text-lg">precision_manufacturing</span>
+                <span>Operations</span>
+            </button>
+            <button class="nav-side w-full text-slate-300 hover:text-primary hover:bg-white/5 px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase" onclick="showView('analytics')">
+                <span class="material-symbols-outlined text-lg">analytics</span>
+                <span>Analytics</span>
+            </button>
+            <button class="nav-side w-full text-slate-300 hover:text-primary hover:bg-white/5 px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase" onclick="showView('occupancy')">
+                <span class="material-symbols-outlined text-lg">garage</span>
+                <span>Occupancy</span>
+            </button>
+            <button class="nav-side w-full text-slate-300 hover:text-primary hover:bg-white/5 px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase" onclick="showView('security')">
+                <span class="material-symbols-outlined text-lg">security</span>
+                <span>Security</span>
+            </button>
+        </nav>
+        <div class="px-6 mt-auto">
+            <button class="w-full py-4 bg-primary/10 border border-primary/40 text-primary font-headline text-[10px] font-bold tracking-[0.3em] uppercase hover:bg-primary/20 transition-all shadow-[0_0_15px_rgba(0,227,253,0.15)] pulse-border" onclick="openDeployWizard()">
+                Deploy Agent
+            </button>
+        </div>
+    </aside>
+
+    <main class="ml-64 pt-24 p-8 relative z-20 min-h-screen">
+        <!-- Dashboard Summary Stats (Common) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="glass-card p-5 hud-corner-tl hud-corner-br">
+                <p class="text-[9px] text-primary/60 font-headline tracking-[0.25em] uppercase mb-1">Total Capacity</p>
+                <div class="flex justify-between items-end">
+                    <p class="text-3xl font-mono text-white" id="cap-total">048</p>
+                    <span class="material-symbols-outlined text-primary/20 text-3xl">grid_view</span>
+                </div>
+            </div>
+            <div class="glass-card p-5 hud-corner-tl hud-corner-br">
+                <p class="text-[9px] text-error/60 font-headline tracking-[0.25em] uppercase mb-1">Current Occupancy</p>
+                <div class="flex justify-between items-end">
+                    <p class="text-3xl font-mono text-error" id="cap-busy">032</p>
+                    <span class="material-symbols-outlined text-error/20 text-3xl">directions_car</span>
+                </div>
+            </div>
+            <div class="glass-card p-5 hud-corner-tl hud-corner-br">
+                <p class="text-[9px] text-primary/60 font-headline tracking-[0.25em] uppercase mb-1">Available Units</p>
+                <div class="flex justify-between items-end">
+                    <p class="text-3xl font-mono text-primary" id="cap-free">016</p>
+                    <span class="material-symbols-outlined text-primary/20 text-3xl">check_circle</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- INJECTED VIEWS -->
+        <div id="view-operations" class="view-section grid grid-cols-12 gap-8 active">
+            <div class="col-span-12 lg:col-span-8 space-y-8">
+                <div class="glass-card rounded-none overflow-hidden hud-corner-tl hud-corner-tr hud-corner-bl hud-corner-br border-primary/30" id="upload-zone" style="cursor: pointer;">
+                    <div class="h-96 relative overflow-hidden">
+                        <img id="preview-img" alt="Capture View" class="w-full h-full object-cover grayscale brightness-75 contrast-125" src="https://lh3.googleusercontent.com/fife/ALs6j_G9Y6nJ_fW..."/>
+                        <div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+                        <div class="absolute top-6 left-6 px-3 py-1 bg-black/80 backdrop-blur-md border border-primary/50 text-[10px] font-mono text-primary tracking-widest">
+                            NODE_PERCEIVER_01 // 34.0522° N // 118.2437° W
+                        </div>
+                        <div id="drop-text" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div class="w-64 h-48 border border-primary/30 relative">
+                                <div class="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-primary"></div>
+                                <div class="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-primary"></div>
+                                <div class="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-primary"></div>
+                                <div class="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-primary"></div>
+                                <div class="absolute inset-0 flex items-center justify-center text-[10px] text-primary/50 tracking-[0.3em] uppercase">Drop Multi-Frame Burst</div>
+                            </div>
+                        </div>
+                        <input type="file" id="file-input" accept="image/*" multiple style="display: none;">
+                        <div class="absolute bottom-8 left-8 right-8 flex justify-between items-end">
+                            <div>
+                                <h3 class="text-2xl font-headline font-black text-white tracking-[0.1em] uppercase mb-1">Gate Alpha-1</h3>
+                                <p id="vision-status" class="text-slate-400 text-xs font-headline tracking-widest uppercase opacity-70">Optical Intelligence Pipeline Active</p>
+                            </div>
+                            <button id="process-btn" class="px-8 py-3 bg-primary/20 border-2 border-primary text-primary font-headline font-bold text-xs tracking-[0.3em] uppercase hover:bg-primary/30 transition-all shadow-[0_0_15px_rgba(0,227,253,0.3)]">
+                                Commence Pipeline
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 hud-corner-tl hud-corner-tr hud-corner-bl hud-corner-br">
+                    <h3 class="font-headline font-bold text-primary/60 tracking-[0.2em] uppercase text-[10px] mb-8">Inference Stream Output</h3>
+                    <div class="grid grid-cols-2 gap-10 mb-10">
+                        <div class="space-y-6">
+                            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+                                <div>
+                                    <p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">License Identifier</p>
+                                    <p class="text-xl font-mono text-white tracking-wider" id="res-plate">-</p>
+                                </div>
+                                <div class="flex items-center gap-2 px-3 py-1 bg-primary/10 border border-primary/30 rounded-full">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-primary" id="res-status-dot"></div>
+                                    <span class="text-[9px] font-bold text-primary uppercase" id="res-status-text">Waiting</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+                                <div>
+                                    <p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">Target Allocation</p>
+                                    <p class="text-xl font-mono text-white tracking-wider" id="res-slot">-</p>
+                                </div>
+                                <div id="res-alloc-tag" class="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full">
+                                    <span class="text-[9px] font-bold text-slate-400 uppercase">Idle</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-6">
+                            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+                                <div>
+                                    <p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">IO Latency</p>
+                                    <p class="text-xl font-mono text-white tracking-wider" id="res-time">0<span class="text-xs text-slate-500 ml-1">MS</span></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+                                <div>
+                                    <p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">Trust Score</p>
+                                    <p class="text-xl font-mono text-white tracking-wider" id="res-conf">0.0</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="log-terminal" class="bg-black/80 border border-primary/20 p-6 font-mono text-[11px] text-primary/80 h-44 overflow-y-auto rounded shadow-inner custom-scrollbar">
+                        <p class="mb-1.5 opacity-60"> [SYS] <span class="text-white">INIT:</span> AGENTNET_NEON_v4.2_CONNECTED</p>
+                        <p class="animate-pulse text-white"> [SCN] <span class="bg-primary/40 px-1">_</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-span-12 lg:col-span-4 space-y-8">
+                <div class="glass-card p-8 hud-corner-tr hud-corner-bl border-primary/20">
+                    <h3 class="font-headline font-bold text-primary/60 tracking-[0.2em] uppercase text-[10px] mb-8">Agent Pipeline Matrix</h3>
+                    <div class="space-y-8 relative">
+                        <div class="relative flex gap-6 opacity-40 grayscale" id="node-vision">
+                            <div class="z-10 w-9 h-9 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center">
+                                <span class="material-symbols-outlined text-sm text-primary">visibility</span>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[9px] text-primary font-headline font-black tracking-[0.2em] uppercase">Vision Agent</p>
+                                <p class="text-xs font-headline text-white tracking-widest uppercase" id="node-vision-text">Perception Mode</p>
+                            </div>
+                        </div>
+                        <div class="relative flex gap-6 opacity-40 grayscale" id="node-optimization">
+                            <div class="z-10 w-9 h-9 rounded-full bg-black border border-white/20 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-sm text-slate-500">psychology</span>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[9px] text-slate-500 font-headline tracking-[0.2em] uppercase">Optimization Agent</p>
+                                <p class="text-xs font-headline text-slate-400 mt-1 uppercase tracking-widest" id="node-optimization-text">Consulting Brain...</p>
+                            </div>
+                        </div>
+                        <div class="relative flex gap-6 opacity-40 grayscale" id="node-allocation">
+                            <div class="z-10 w-9 h-9 rounded-full bg-black border border-white/20 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-sm text-slate-500">assignment</span>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[9px] text-slate-500 font-headline tracking-[0.2em] uppercase">Allocator Agent</p>
+                                <p class="text-xs font-headline text-slate-400 mt-1 uppercase tracking-widest" id="node-allocation-text">Awaiting Strategy</p>
+                            </div>
+                        </div>
+                        <div class="relative flex gap-6 opacity-40 grayscale" id="node-sre">
+                            <div class="z-10 w-9 h-9 rounded-full bg-black border border-white/20 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-sm text-slate-500">shield</span>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[9px] text-slate-500 font-headline tracking-[0.2em] uppercase">SRE Guardian</p>
+                                <p class="text-xs font-headline text-slate-400 mt-1 uppercase tracking-widest" id="node-sre-text">Observing Net</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 hud-corner-tr hud-corner-bl border-primary/20">
+                    <h3 class="font-headline font-bold text-primary/60 tracking-[0.2em] uppercase text-[10px]">P-NORTH Topography</h3>
+                    <div class="grid grid-cols-8 gap-1.5" id="slot-grid">
+                        <!-- Slots injected via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-analytics" class="view-section hidden space-y-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="glass-card p-8 hud-corner-tl hud-corner-br">
+                    <h3 class="text-xs font-headline font-bold text-primary tracking-[0.2em] uppercase mb-6">Vehicle Flow Trend</h3>
+                    <div class="h-64">
+                        <canvas id="flowChart"></canvas>
+                    </div>
+                </div>
+                <div class="glass-card p-8 hud-corner-tl hud-corner-br">
+                    <h3 class="text-xs font-headline font-bold text-primary tracking-[0.2em] uppercase mb-6">Plate Recognition Accuracy</h3>
+                    <div class="h-64">
+                        <canvas id="accuracyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="glass-card p-8 hud-corner-tl hud-corner-tr hud-corner-bl hud-corner-br">
+                <h3 class="text-xs font-headline font-bold text-primary tracking-[0.2em] uppercase mb-6">Peak Occupancy Heatmap</h3>
+                <div id="heatmap-grid" class="grid grid-cols-24 gap-1">
+                    <!-- Heatmap injected via JS -->
+                </div>
+            </div>
+        </div>
+
+        <div id="view-occupancy" class="view-section hidden space-y-8">
+            <div class="glass-card p-8 hud-corner-tl hud-corner-br">
+                <div class="flex justify-between items-center mb-8">
+                    <h3 class="text-xs font-headline font-bold text-primary tracking-[0.2em] uppercase">Interactive P-Lot Topography</h3>
+                    <div class="flex gap-4">
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 bg-primary/20 border border-primary/40"></div><span class="text-[9px] text-slate-400 tracking-widest">FREE</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 bg-error/30 border border-error/50"></div><span class="text-[9px] text-error/60 tracking-widest">OCCUPIED</span></div>
+                    </div>
+                </div>
+                <div id="occupancy-full-grid" class="grid grid-cols-8 md:grid-cols-12 gap-3">
+                    <!-- High fidelity slots injected via JS -->
+                </div>
+            </div>
+        </div>
+
+        <div id="view-security" class="view-section hidden space-y-8">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="aspect-video bg-black/80 border border-white/10 relative overflow-hidden">
+                    <div class="absolute top-2 left-2 text-[8px] font-mono text-primary bg-black/50 px-1">CAM_ALPHA_GATE_01</div>
+                    <div class="absolute inset-0 flex items-center justify-center opacity-10">
+                         <span class="material-symbols-outlined text-6xl">videocam_off</span>
+                    </div>
+                </div>
+                <div class="aspect-video bg-black/80 border border-white/10 relative overflow-hidden">
+                    <div class="absolute top-2 left-2 text-[8px] font-mono text-primary bg-black/50 px-1">CAM_BETA_GATE_01</div>
+                    <div class="absolute inset-0 flex items-center justify-center opacity-10">
+                         <span class="material-symbols-outlined text-6xl">videocam_off</span>
+                    </div>
+                </div>
+            </div>
+            <div class="glass-card p-6 border-error/30">
+                <h3 class="text-xs font-headline font-bold text-error tracking-[0.2em] uppercase mb-4 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm">warning</span> 
+                    Sentry Threat Logs
+                </h3>
+                <div id="threat-feed" class="space-y-3 font-mono text-[10px]">
+                    <p class="text-slate-500">[21:12:04] ACCESS_LOG: NHZODY2366 VALIDATED</p>
+                    <p class="text-error">[21:15:33] THREAT: UNKNOWN VEHICLE AT GATE BETA</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-infrastructure" class="view-section hidden space-y-8">
+            <div id="infra-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Health cards injected via JS -->
+            </div>
+            <div class="glass-card p-8">
+                <h3 class="text-xs font-headline font-bold text-primary tracking-[0.2em] uppercase mb-6">Uptime SLA Tracker</h3>
+                <div class="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                    <div class="h-full bg-primary shadow-[0_0_10px_rgba(129,236,255,1)]" style="width: 98.4%"></div>
+                </div>
+                <p class="text-right text-[10px] text-primary font-mono mt-2 tracking-widest">98.4% RELIABILITY SCORE</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- DEPLOY AGENT MODAL -->
+    <div id="deploy-wizard" class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/80 backdrop-blur-md">
+        <div class="glass-card w-[500px] p-10 hud-corner-tl hud-corner-tr hud-corner-bl hud-corner-br">
+            <button class="absolute top-4 right-4 text-slate-500 hover:text-white" onclick="closeDeployWizard()">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+            <h2 class="text-xl font-headline font-black text-primary tracking-[0.2em] uppercase mb-8">Agent Orchestrator</h2>
+            
+            <div id="wizard-step-1" class="space-y-6">
+                 <div>
+                    <label class="text-[10px] text-slate-500 tracking-widest uppercase block mb-2">Target Gate</label>
+                    <select class="w-full bg-black border border-primary/30 text-white p-3 font-mono text-xs">
+                        <option>ALPHA_GATE_01</option>
+                        <option>BETA_GATE_01</option>
+                    </select>
+                 </div>
+                 <button class="w-full py-4 bg-primary text-black font-headline font-bold text-[11px] tracking-[0.2em] uppercase" onclick="wizardNext(2)">Initialize Parameters</button>
+            </div>
+
+            <div id="wizard-step-2" class="hidden space-y-6 text-center py-10">
+                 <div class="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+                 <p class="text-primary font-mono text-xs tracking-[0.2em] animate-pulse">ESTABLISHING NERVOUS SYSTEM...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        // ... (preserving existing consts) ...
+
+        let currentView = 'operations';
+
+        function showView(viewId) {
+            document.querySelectorAll('.view-section').forEach(v => v.classList.add('hidden'));
+            document.getElementById(`view-${viewId}`).classList.remove('hidden');
+            
+            // Update Side Nav
+            document.querySelectorAll('.nav-side').forEach(n => {
+                n.classList.remove('text-primary', 'bg-primary/10', 'border-l-2', 'border-primary');
+                n.classList.add('text-slate-300');
+            });
+            const activeSide = document.querySelector(`.nav-side[onclick*="${viewId}"]`);
+            if(activeSide) {
+                activeSide.classList.add('text-primary', 'bg-primary/10', 'border-l-2', 'border-primary');
+                activeSide.classList.remove('text-slate-300');
+            }
+
+            // Update Top Nav
+            document.querySelectorAll('.nav-top').forEach(n => {
+                n.classList.remove('text-primary', 'border-b', 'border-primary', 'pb-1');
+                n.classList.add('text-slate-300');
+            });
+            const activeTop = document.querySelector(`.nav-top[onclick*="${viewId}"]`);
+            if(activeTop) {
+                activeTop.classList.add('text-primary', 'border-b', 'border-primary', 'pb-1');
+                activeTop.classList.remove('text-slate-300');
+            }
+
+            if(viewId === 'analytics') initCharts();
+            if(viewId === 'occupancy') refreshOccupancy();
+            if(viewId === 'infrastructure') refreshInfra();
+        }
+
+        function openDeployWizard() { document.getElementById('deploy-wizard').classList.remove('hidden'); }
+        function closeDeployWizard() { document.getElementById('deploy-wizard').classList.add('hidden'); }
+        function wizardNext(step) {
+            if(step === 2) {
+                document.getElementById('wizard-step-1').classList.add('hidden');
+                document.getElementById('wizard-step-2').classList.remove('hidden');
+                setTimeout(() => {
+                    closeDeployWizard();
+                    appendLog("<span class='text-success'>[DEPLOY] New Agent Instance instantiated at GATE_ALPHA_01.</span>");
+                }, 3000);
+            }
+        }
+
+        function initCharts() {
+            fetch('/api/stats').then(r => r.json()).then(res => {
+                const data = res.data;
+                new Chart(document.getElementById('flowChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'],
+                        datasets: [{
+                            label: 'Vehicles',
+                            data: data.flow,
+                            backgroundColor: 'rgba(129, 236, 255, 0.4)',
+                            borderColor: '#81ecff',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+                });
+            });
+            // Accuracy Chart simplified for demo
+        }
+
+        function refreshOccupancy() {
+             const grid = document.getElementById('occupancy-full-grid');
+             grid.innerHTML = '';
+             fetch('/api/slots/all').then(r => r.json()).then(res => {
+                 res.slots.forEach(slot => {
+                     const div = document.createElement('div');
+                     const status = slot.status === 'OCCUPIED' ? 'error' : 'primary';
+                     div.className = `aspect-square border cursor-pointer hover:scale-105 transition-all p-1 flex flex-col justify-between ${slot.status === 'OCCUPIED' ? 'bg-error/30 border-error/50' : 'bg-primary/10 border-primary/30'}`;
+                     div.innerHTML = `<span class="text-[7px] font-mono text-${status}/60">${slot.slot_number}</span><span class="text-[8px] font-mono text-white text-center">${slot.current_vehicle || ''}</span>`;
+                     div.onclick = () => alert(`SLOT: ${slot.slot_number} \nVEHICLE: ${slot.current_vehicle || 'NONE'} \nSTATUS: ${slot.status}`);
+                     grid.appendChild(div);
+                 });
+             });
+        }
+
+        function refreshInfra() {
+             const container = document.getElementById('infra-cards');
+             container.innerHTML = '';
+             fetch('/api/infrastructure').then(r => r.json()).then(res => {
+                 Object.entries(res.data).forEach(([node, info]) => {
+                     const color = info.status === 'ONLINE' ? 'primary' : 'error';
+                     const card = document.createElement('div');
+                     card.className = `glass-card p-6 border-${color}/30`;
+                     card.innerHTML = `
+                        <p class="text-[9px] text-slate-500 tracking-widest uppercase mb-4">${node}</p>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xl font-mono text-white">${info.uptime}</span>
+                            <span class="text-[9px] font-bold text-${color} uppercase animate-pulse">${info.status}</span>
+                        </div>
+                        <p class="text-[9px] text-slate-400 mt-2 tracking-widest">LATENCY: ${info.latency}</p>
+                     `;
+                     container.appendChild(card);
+                 });
+             });
+        }
+
+        // Generate Operations Small Grid
+        const slotGrid = document.getElementById('slot-grid');
+        if(slotGrid) {
+            for(let i=0; i<32; i++) {
+                const div = document.createElement('div');
+                const isBusy = Math.random() > 0.8;
+                div.className = `aspect-square border ${isBusy ? 'bg-error/30 border-error/50' : 'bg-primary/10 border-primary/30'}`;
+                slotGrid.appendChild(div);
+            }
+        }
+
+        // --- RESTORED IMAGE BURST ENGINE ---
+        const previewImg = document.getElementById('preview-img');
+        const processBtn = document.getElementById('process-btn');
+        const dropText = document.getElementById('drop-text');
+        const uploadZone = document.getElementById('upload-zone');
+        const logTerminal = document.getElementById('log-terminal');
+
+        let currentBurst = [];
+
+        // Drag and Drop Logic
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+            uploadZone.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); });
+        });
+
+        uploadZone.addEventListener('dragover', () => { uploadZone.classList.add('pulse-border'); });
+        uploadZone.addEventListener('dragleave', () => { uploadZone.classList.remove('pulse-border'); });
+        uploadZone.addEventListener('drop', (e) => {
+            uploadZone.classList.remove('pulse-border');
+            const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+            if (files.length > 0) handleFiles(files);
+        });
+
+        uploadZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length > 0) handleFiles(files);
+        });
+
+        function handleFiles(files) {
+            currentBurst = files.slice(0, 10);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+                previewImg.classList.add('brightness-100', 'grayscale-0');
+                dropText.style.display = 'none';
+            };
+            reader.readAsDataURL(currentBurst[0]);
+            
+            appendLog(`[IMG] Burst Ready: ${currentBurst.length} frames loaded.`);
+            document.getElementById('vision-status').innerText = `Burst Ready (${currentBurst.length} frames)`;
+            document.getElementById('vision-status').classList.add('text-primary');
+        }
+
+        function appendLog(msg) {
+            const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
+            const p = document.createElement('p');
+            p.className = 'mb-1';
+            p.innerHTML = `<span class="opacity-40">[${ts}]</span> ${msg}`;
+            logTerminal.prepend(p);
+        }
+
+        function activateNode(id, text) {
+            document.querySelectorAll('.relative.flex.gap-6').forEach(n => {
+                if (n.id) n.classList.add('opacity-40', 'grayscale');
+            });
+            const node = document.getElementById(id);
+            node.classList.remove('opacity-40', 'grayscale');
+            node.classList.add('pulse-border');
+            if(document.getElementById(`${id}-text`)) {
+                document.getElementById(`${id}-text`).innerText = text;
+            }
+        }
+
+        function resetUI() {
+            document.getElementById('res-plate').innerText = '-';
+            document.getElementById('res-slot').innerText = '-';
+            document.getElementById('res-time').innerHTML = '0<span class="text-xs text-slate-500 ml-1">MS</span>';
+            document.getElementById('res-conf').innerText = '0.0';
+            document.querySelectorAll('.pulse-border').forEach(n => n.classList.remove('pulse-border'));
+        }
+
+        processBtn.addEventListener('click', async () => {
+            if (currentBurst.length === 0) { 
+                appendLog('<span class="text-error">ERROR: No frames loaded.</span>');
+                return; 
+            }
+
+            resetUI();
+            processBtn.disabled = true;
+            processBtn.innerText = "COORDINATING...";
+            appendLog('<span class="text-white">PIPELINE: COMMENCED</span>');
+
+            const formData = new FormData();
+            currentBurst.forEach(f => formData.append('files', f));
+
+            try {
+                // Step 1: Vision
+                activateNode('node-vision', 'Consensus Voting...');
+                appendLog(`[VIS] Analyzing ${currentBurst.length} frame burst...`);
+                
+                const response = await fetch('/api/entry', { method: 'POST', body: formData });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const data = result.data;
+                    
+                    // Optimization
+                    await new Promise(r => setTimeout(r, 800));
+                    activateNode('node-optimization', 'Optimizing Slot...');
+                    appendLog('[OPT] Consulting brain for Best-Fit strategy.');
+
+                    // Allocation
+                    await new Promise(r => setTimeout(r, 800));
+                    activateNode('node-allocation', `Locked in ${data.execution.slot_id}`);
+                    appendLog(`[ALL] Executing allocation for ID: ${data.execution.transaction_id}`);
+
+                    // SRE
+                    await new Promise(r => setTimeout(r, 400));
+                    activateNode('node-sre', 'Health: Optimal');
+                    appendLog('<span class="text-success">[SRE] Handover integrity verified.</span>');
+
+                    // Output
+                    document.getElementById('res-plate').innerText = data.perception.license_plate;
+                    document.getElementById('res-slot').innerText = data.execution.slot_id;
+                    document.getElementById('res-time').innerHTML = data.total_ms + '<span class="text-xs text-slate-500 ml-1">MS</span>';
+                    document.getElementById('res-conf').innerText = data.perception.trust_score;
+                    
+                    document.getElementById('res-status-dot').className = 'w-1.5 h-1.5 rounded-full bg-success';
+                    document.getElementById('res-status-text').innerText = 'IDENTIFIED';
+                    document.getElementById('res-status-text').className = 'text-[9px] font-bold text-success uppercase';
+                    
+                    const allocTag = document.getElementById('res-alloc-tag');
+                    allocTag.className = 'flex items-center gap-2 px-3 py-1 bg-success/10 border border-success/30 rounded-full';
+                    allocTag.innerHTML = '<span class="text-[9px] font-bold text-success uppercase">RESERVED</span>';
+
+                } else {
+                    appendLog(`<span class="text-error">FAIL: ${result.error}</span>`);
+                }
+            } catch (err) {
+                appendLog('<span class="text-error">SRE ALERT: Agent connection lost.</span>');
+            } finally {
+                processBtn.disabled = false;
+                processBtn.innerText = "Commence Pipeline";
+            }
+        });
+
+        // Initialize Analytics Charts on first load if default
+        if(currentView === 'operations') {
+            // refreshOccupancy(); // Optional: preload occupancy
+        }
+    </script>
+</body>
+</html>

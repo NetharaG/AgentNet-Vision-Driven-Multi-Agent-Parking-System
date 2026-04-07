@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AgentNet | Smart Parking AI Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-high": "rgba(15, 15, 20, 0.6)",
+                    "inverse-surface": "#fcf8ff",
+                    "primary-dim": "#00d4ec",
+                    "primary-fixed": "#00e3fd",
+                    "on-primary": "#005762",
+                    "on-tertiary-fixed-variant": "#0027a4",
+                    "on-error-container": "#ffa8a3",
+                    "secondary-container": "#006a6a",
+                    "surface-dim": "#0a0a0f",
+                    "surface": "#0a0a0f",
+                    "primary-fixed-dim": "#00d4ec",
+                    "tertiary-container": "#0743ff",
+                    "tertiary": "#8397ff",
+                    "on-surface-variant": "#acaab1",
+                    "on-tertiary-fixed": "#000e50",
+                    "inverse-primary": "#006976",
+                    "secondary-fixed-dim": "#7fdede",
+                    "error": "#ff716c",
+                    "tertiary-fixed-dim": "#8b9dff",
+                    "on-secondary": "#005858",
+                    "outline-variant": "rgba(0, 227, 253, 0.2)",
+                    "on-primary-fixed-variant": "#005762",
+                    "on-tertiary-container": "#f9f6ff",
+                    "on-primary-fixed": "#003840",
+                    "surface-container-highest": "rgba(25, 25, 35, 0.7)",
+                    "on-secondary-fixed": "#004343",
+                    "surface-container": "rgba(10, 10, 15, 0.7)",
+                    "error-container": "#9f0519",
+                    "surface-bright": "#2c2b33",
+                    "tertiary-fixed": "#9dabff",
+                    "primary-container": "#00e3fd",
+                    "on-error": "#490006",
+                    "tertiary-dim": "#4464ff",
+                    "surface-variant": "rgba(20, 20, 25, 0.6)",
+                    "on-secondary-fixed-variant": "#006262",
+                    "surface-tint": "#81ecff",
+                    "on-secondary-container": "#d9fffe",
+                    "primary": "#81ecff",
+                    "on-background": "#f9f5fd",
+                    "outline": "#76747b",
+                    "inverse-on-surface": "#55545b",
+                    "on-tertiary": "#001465",
+                    "secondary-dim": "#7fdede",
+                    "secondary": "#8dedec",
+                    "secondary-fixed": "#8dedec",
+                    "error-dim": "#d7383b",
+                    "surface-container-low": "rgba(5, 5, 10, 0.8)",
+                    "on-primary-container": "#004d57",
+                    "background": "#0a0a0f",
+                    "surface-container-lowest": "#000000",
+                    "on-surface": "#f9f5fd"
+            },
+            "borderRadius": {
+                    "DEFAULT": "2px",
+                    "lg": "4px",
+                    "xl": "8px",
+                    "full": "12px"
+            },
+            "fontFamily": {
+                    "headline": ["Space Grotesk"],
+                    "body": ["Inter"],
+                    "label": ["Space Grotesk"],
+                    "mono": ["JetBrains Mono"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background: radial-gradient(circle at center, #0d1117 0%, #0a0a0f 100%);
+            background-attachment: fixed;
+            position: relative;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(rgba(129, 236, 255, 0.08) 1px, transparent 1px);
+            background-size: 24px 24px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .scanline {
+            background: linear-gradient(to bottom, transparent 50%, rgba(129, 236, 255, 0.02) 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+        .glass-card {
+            background: rgba(10, 10, 15, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 212, 236, 0.15);
+            box-shadow: 0 0 15px rgba(0, 212, 236, 0.05);
+            position: relative;
+        }
+        .hud-corner-tl::before { content: "⌐"; position: absolute; top: -2px; left: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        .hud-corner-tr::before { content: "¬"; position: absolute; top: -2px; right: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        .hud-corner-bl::before { content: "⌞"; position: absolute; bottom: -2px; left: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        .hud-corner-br::before { content: "⌟"; position: absolute; bottom: -2px; right: -2px; color: #81ecff; font-family: monospace; font-size: 16px; font-weight: bold; }
+        
+        .pulse-border {
+            animation: border-pulse 2s infinite;
+        }
+        @keyframes border-pulse {
+            0% { border-color: rgba(0, 227, 253, 0.3); box-shadow: 0 0 0px rgba(0, 227, 253, 0); }
+            50% { border-color: rgba(0, 227, 253, 0.8); box-shadow: 0 0 10px rgba(0, 227, 253, 0.3); }
+            100% { border-color: rgba(0, 227, 253, 0.3); box-shadow: 0 0 0px rgba(0, 227, 253, 0); }
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="font-body text-on-surface min-h-screen selection:bg-primary/30">
+<div class="fixed inset-0 scanline z-10 pointer-events-none"></div>
+<!-- TopNavBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-8 py-4 bg-black/60 backdrop-blur-2xl border-b border-primary/20">
+<div class="flex items-center gap-6">
+<span class="text-2xl font-headline font-black tracking-[0.25em] text-primary drop-shadow-[0_0_10px_rgba(129,236,255,0.4)]">AGENTNET</span>
+<div class="h-4 w-px bg-primary/20"></div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="text-[10px] font-headline font-bold text-primary tracking-[0.2em] uppercase">Network Active</span>
+</div>
+</div>
+<nav class="hidden md:flex gap-10 items-center">
+<a class="text-primary font-headline text-xs font-bold tracking-[0.2em] uppercase border-b border-primary pb-1" href="#">Dashboard</a>
+<a class="text-slate-300 hover:text-primary transition-colors font-headline text-xs font-bold tracking-[0.2em] uppercase" href="#">Deployments</a>
+<a class="text-slate-300 hover:text-primary transition-colors font-headline text-xs font-bold tracking-[0.2em] uppercase" href="#">Infrastructure</a>
+</nav>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-4 mr-2">
+<button class="material-symbols-outlined text-slate-300 hover:text-primary transition-all text-xl" data-icon="notifications">notifications</button>
+<button class="material-symbols-outlined text-slate-300 hover:text-primary transition-all text-xl" data-icon="settings">settings</button>
+</div>
+<div class="w-9 h-9 rounded bg-primary/10 border border-primary/30 p-0.5">
+<img alt="User profile avatar" class="w-full h-full object-cover rounded-sm grayscale hover:grayscale-0 transition-all" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkaupf0Yod8TfbzX5o-p-ACwUncYG4OjKdNzmJWczH5UC-_JVoXVmMsGYlnUaHjWq59d2L2v2Y-Ggb8-P61jSTFNFH97UtKO-Eq15d0owBM3EmsxQqnEoQZyERHOrzu1qFiozcN6lSldLIa-zwYTxESaORWasYRmZraxvPMSSvralvOwJbL0HvVrOPlyDAB_aPlzm5EHa6tcPdQzj-Nm6HHB7WV7iHioXyOvVOMf6X94-Jn2zPCr4DDm06QSEDV5bAWhGpElJAx37g"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full z-40 flex flex-col pt-24 pb-8 w-64 bg-black/40 backdrop-blur-3xl border-r border-primary/10">
+<div class="px-8 mb-10">
+<div class="flex items-center gap-2 mb-1">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+<span class="font-headline font-bold text-primary tracking-widest text-[11px]">NEON SENTRY</span>
+</div>
+<p class="text-[9px] text-slate-400 font-headline tracking-[0.2em] uppercase opacity-70">AI CORE OPERATIONAL</p>
+</div>
+<nav class="flex-1 space-y-2 px-4">
+<a class="text-primary bg-primary/10 font-bold px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase border-l-2 border-primary" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="precision_manufacturing">precision_manufacturing</span>
+<span>Operations</span>
+</a>
+<a class="text-slate-300 hover:text-primary hover:bg-white/5 px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="analytics">analytics</span>
+<span>Analytics</span>
+</a>
+<a class="text-slate-300 hover:text-primary hover:bg-white/5 px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="garage">garage</span>
+<span>Occupancy</span>
+</a>
+<a class="text-slate-300 hover:text-primary hover:bg-white/5 px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="security">security</span>
+<span>Security</span>
+</a>
+<a class="text-slate-300 hover:text-primary hover:bg-white/5 px-4 py-3 flex items-center gap-4 transition-all font-headline text-[11px] tracking-[0.2em] uppercase" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="receipt_long">receipt_long</span>
+<span>Logs</span>
+</a>
+</nav>
+<div class="px-6 mt-auto">
+<button class="w-full py-4 bg-primary/10 border border-primary/40 text-primary font-headline text-[10px] font-bold tracking-[0.3em] uppercase hover:bg-primary/20 transition-all shadow-[0_0_15px_rgba(0,227,253,0.15)] pulse-border">
+                Deploy Agent
+            </button>
+<div class="mt-8 pt-6 border-t border-white/5 space-y-3">
+<a class="flex items-center gap-4 px-2 py-1 text-slate-400 hover:text-primary text-[10px] font-headline tracking-[0.2em] uppercase transition-all" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="monitor_heart">monitor_heart</span>
+<span>System Health</span>
+</a>
+<a class="flex items-center gap-4 px-2 py-1 text-slate-400 hover:text-primary text-[10px] font-headline tracking-[0.2em] uppercase transition-all" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="logout">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-64 pt-24 p-8 relative z-20 min-h-screen">
+<!-- KPI Stats Bar -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<div class="glass-card p-5 hud-corner-tl hud-corner-br">
+<p class="text-[9px] text-primary/60 font-headline tracking-[0.25em] uppercase mb-1">Total Capacity</p>
+<div class="flex justify-between items-end">
+<p class="text-3xl font-mono text-white">048</p>
+<span class="material-symbols-outlined text-primary/20 text-3xl" data-icon="grid_view">grid_view</span>
+</div>
+</div>
+<div class="glass-card p-5 hud-corner-tl hud-corner-br">
+<p class="text-[9px] text-error/60 font-headline tracking-[0.25em] uppercase mb-1">Current Occupancy</p>
+<div class="flex justify-between items-end">
+<p class="text-3xl font-mono text-error">032</p>
+<span class="material-symbols-outlined text-error/20 text-3xl" data-icon="directions_car">directions_car</span>
+</div>
+</div>
+<div class="glass-card p-5 hud-corner-tl hud-corner-br">
+<p class="text-[9px] text-primary/60 font-headline tracking-[0.25em] uppercase mb-1">Available Units</p>
+<div class="flex justify-between items-end">
+<p class="text-3xl font-mono text-primary">016</p>
+<span class="material-symbols-outlined text-primary/20 text-3xl" data-icon="check_circle">check_circle</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-12 gap-8">
+<!-- Left Column: Entry Perceiver & Agent Output -->
+<div class="col-span-12 lg:col-span-8 space-y-8">
+<!-- Entry Perceiver -->
+<div class="glass-card rounded-none overflow-hidden hud-corner-tl hud-corner-tr hud-corner-bl hud-corner-br border-primary/30">
+<div class="h-96 relative overflow-hidden">
+<img alt="Parking entrance camera view" class="w-full h-full object-cover grayscale brightness-75 contrast-125" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDqSBIyMfd0uDcEGtqSiJqwNQUTAe1ZY1L7_nitx1I6LqqJfepiyvDxw08GSRFXJTv7-G6yBLin4IKjcDTEjMaw__gqm6XEm6Fg_j3oRk0PlNjfWcbJcl_cHne2cr4lpPgDjDSBHHWO83qhu4wNezG-mBpiRbgRCKISgFrXymzVbyMbXPpYfgjfJzLaUDOGPpiK2_pYPZOxnUZ-TqdO7Y3H4KbJQyp0dSlOIggKGjyDEc45Lk7SCLss9JcbAbmN501sX4p3ET6hVPyk"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+<div class="absolute top-6 left-6 px-3 py-1 bg-black/80 backdrop-blur-md border border-primary/50 text-[10px] font-mono text-primary tracking-widest">
+                            NODE_PERCEIVER_01 // 34.0522° N // 118.2437° W
+                        </div>
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+<div class="w-64 h-48 border border-primary/30 relative">
+<div class="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-primary"></div>
+<div class="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-right-2 border-primary"></div>
+<div class="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-primary"></div>
+<div class="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-right-2 border-primary"></div>
+</div>
+</div>
+<div class="absolute bottom-8 left-8 right-8 flex justify-between items-end">
+<div>
+<h3 class="text-2xl font-headline font-black text-white tracking-[0.1em] uppercase mb-1">Gate Alpha-1</h3>
+<p class="text-slate-400 text-xs font-headline tracking-widest uppercase opacity-70">Optical Intelligence Pipeline Active</p>
+</div>
+<button class="px-8 py-3 bg-primary/20 border-2 border-primary text-primary font-headline font-bold text-xs tracking-[0.3em] uppercase hover:bg-primary/30 transition-all pulse-border">
+                                Commence Pipeline
+                            </button>
+</div>
+</div>
+</div>
+<!-- Agent Output -->
+<div class="glass-card p-8 hud-corner-tl hud-corner-tr hud-corner-bl hud-corner-br">
+<h3 class="font-headline font-bold text-primary/60 tracking-[0.2em] uppercase text-[10px] mb-8">Inference Stream Output</h3>
+<div class="grid grid-cols-2 gap-10 mb-10">
+<div class="space-y-6">
+<div class="flex items-center justify-between border-b border-white/10 pb-4">
+<div>
+<p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">License Identifier</p>
+<p class="text-xl font-mono text-white tracking-wider">HR26DQ5551</p>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 bg-primary/10 border border-primary/30 rounded-full">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+<span class="text-[9px] font-bold text-primary uppercase">Confirmed</span>
+</div>
+</div>
+<div class="flex items-center justify-between border-b border-white/10 pb-4">
+<div>
+<p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">Target Allocation</p>
+<p class="text-xl font-mono text-white tracking-wider">ZONE_P-12</p>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 bg-amber-400/10 border border-amber-400/30 rounded-full">
+<div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
+<span class="text-[9px] font-bold text-amber-400 uppercase">Routing</span>
+</div>
+</div>
+</div>
+<div class="space-y-6">
+<div class="flex items-center justify-between border-b border-white/10 pb-4">
+<div>
+<p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">IO Latency</p>
+<p class="text-xl font-mono text-white tracking-wider">1057<span class="text-xs text-slate-500 ml-1">MS</span></p>
+</div>
+<div class="flex items-end gap-1 h-6">
+<div class="w-1.5 bg-primary/40 h-2"></div>
+<div class="w-1.5 bg-primary/40 h-4"></div>
+<div class="w-1.5 bg-primary h-5"></div>
+<div class="w-1.5 bg-primary/40 h-3"></div>
+</div>
+</div>
+<div class="flex items-center justify-between border-b border-white/10 pb-4">
+<div>
+<p class="text-[9px] text-slate-500 font-headline tracking-widest uppercase mb-1">Signal Integrity</p>
+<p class="text-xl font-mono text-white tracking-wider">99.2<span class="text-xs text-slate-500 ml-1">%</span></p>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 bg-emerald-400/10 border border-emerald-400/30 rounded-full">
+<div class="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+<span class="text-[9px] font-bold text-emerald-400 uppercase">Optimal</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Log Stream Terminal -->
+<div class="bg-black/80 border border-primary/20 p-6 font-mono text-[11px] text-primary/80 h-44 overflow-y-auto rounded shadow-inner">
+<p class="mb-1.5 opacity-60"> [14:22:01] <span class="text-white">INIT:</span> AGENTNET_CORE_v2.4_READY</p>
+<p class="mb-1.5"> [14:22:05] <span class="text-primary">SIGNAL:</span> Perception gate Alpha-1 triggered</p>
+<p class="mb-1.5"> [14:22:06] <span class="text-primary">VISION:</span> Class [SEDAN] identified. Confidence: 0.992</p>
+<p class="mb-1.5"> [14:22:07] <span class="text-primary">OCR:</span> Plate [HR26DQ5551] validated against Registry</p>
+<p class="mb-1.5"> [14:22:08] <span class="text-amber-400">PATH:</span> Running spatial optimization for ZONE [P_NORTH]</p>
+<p class="mb-1.5"> [14:22:09] <span class="text-primary">EXEC:</span> Allocation token sent to SRE_GUARDIAN</p>
+<p class="animate-pulse text-white"> [14:22:10] <span class="bg-primary/40 px-1">_</span></p>
+</div>
+</div>
+</div>
+<!-- Right Column: Decision Chain & Grid -->
+<div class="col-span-12 lg:col-span-4 space-y-8">
+<!-- Decision Chain -->
+<div class="glass-card p-8 hud-corner-tr hud-corner-bl border-primary/20">
+<h3 class="font-headline font-bold text-primary/60 tracking-[0.2em] uppercase text-[10px] mb-8">Agent Pipeline Matrix</h3>
+<div class="space-y-8 relative">
+<div class="absolute left-4 top-4 bottom-4 w-px bg-white/10">
+<div class="absolute top-0 left-0 w-full h-1/3 bg-primary shadow-[0_0_10px_rgba(129,236,255,1)]"></div>
+</div>
+<div class="relative flex gap-6">
+<div class="z-10 w-9 h-9 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center shadow-[0_0_15px_rgba(129,236,255,0.4)]">
+<span class="material-symbols-outlined text-sm text-primary" data-icon="visibility">visibility</span>
+</div>
+<div class="flex-1">
+<p class="text-[9px] text-primary font-headline font-black tracking-[0.2em] uppercase">Vision Agent</p>
+<div class="flex justify-between items-end mt-1">
+<p class="text-xs font-headline text-white tracking-widest uppercase">Analysis Complete</p>
+<p class="text-[10px] font-mono text-primary">94.3%</p>
+</div>
+<div class="mt-2 h-0.5 w-full bg-white/5 overflow-hidden">
+<div class="h-full bg-primary w-[94.3%] shadow-[0_0_5px_rgba(129,236,255,0.8)]"></div>
+</div>
+</div>
+</div>
+<div class="relative flex gap-6 opacity-40 grayscale">
+<div class="z-10 w-9 h-9 rounded-full bg-black border border-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-slate-500" data-icon="psychology">psychology</span>
+</div>
+<div class="flex-1">
+<p class="text-[9px] text-slate-500 font-headline tracking-[0.2em] uppercase">Pathfinder Agent</p>
+<p class="text-xs font-headline text-slate-400 mt-1 uppercase tracking-widest">Processing Topology...</p>
+</div>
+</div>
+<div class="relative flex gap-6 opacity-40 grayscale">
+<div class="z-10 w-9 h-9 rounded-full bg-black border border-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-slate-500" data-icon="assignment">assignment</span>
+</div>
+<div class="flex-1">
+<p class="text-[9px] text-slate-500 font-headline tracking-[0.2em] uppercase">Allocator Agent</p>
+<p class="text-xs font-headline text-slate-400 mt-1 uppercase tracking-widest">Awaiting Spatial Map</p>
+</div>
+</div>
+<div class="relative flex gap-6 opacity-40 grayscale">
+<div class="z-10 w-9 h-9 rounded-full bg-black border border-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-slate-500" data-icon="shield">shield</span>
+</div>
+<div class="flex-1">
+<p class="text-[9px] text-slate-500 font-headline tracking-[0.2em] uppercase">SRE Guardian</p>
+<p class="text-xs font-headline text-slate-400 mt-1 uppercase tracking-widest">Idle_Wait_State</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Live Parking Slot Map Grid (6x8) -->
+<div class="glass-card p-8 hud-corner-tr hud-corner-bl border-primary/20">
+<div class="flex justify-between items-center mb-8">
+<h3 class="font-headline font-bold text-primary/60 tracking-[0.2em] uppercase text-[10px]">Floor P1 Topography</h3>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-sm bg-primary shadow-[0_0_5px_rgba(129,236,255,0.5)]"></div>
+<span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Free</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-sm bg-error/60"></div>
+<span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Busy</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-8 gap-2">
+<!-- Generative map logic for dense feel -->
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40 shadow-[inset_0_0_10px_rgba(0,212,236,0.1)]"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-amber-400/30 border border-amber-400/50"></div>
+<div class="aspect-square bg-amber-400/30 border border-amber-400/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-amber-400/30 border border-amber-400/50"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40 shadow-[0_0_8px_rgba(0,212,236,0.3)]"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-primary/20 border border-primary/40"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+<div class="aspect-square bg-error/40 border border-error/50"></div>
+</div>
+<button class="w-full mt-8 py-3 border border-primary/20 text-slate-400 font-headline text-[9px] font-bold tracking-[0.3em] uppercase hover:text-primary hover:border-primary/50 transition-all bg-white/5">
+                        Expand Telemetry View
+                    </button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

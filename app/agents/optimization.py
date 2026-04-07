@@ -1,61 +1,56 @@
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
-from ..db.models import ParkingSlot
+from typing import Dict, Any, List, Optional
+from app.utils.supabase_client import supabase_manager
 
 class OptimizationAgent:
     """
-    Implements Bin-Packing logic to find the best slot.
+    The Brain of AgentNet.
+    Specializes in Space Optimization and Best-Fit Bin-Packing.
     """
     
-    def __init__(self, session: AsyncSession):
-        self.session = session
+    def __init__(self):
+        self.supabase = supabase_manager.client
 
-    async def find_optimal_slot(self, vehicle_size: str) -> ParkingSlot | None:
+    def find_optimal_slot(self, vehicle_size_class: str) -> Optional[Dict[str, Any]]:
         """
-        Finds the Smallest Available Slot that fits the vehicle (Best Fit).
+        Consultancy: Finds the most efficient available slot.
+        Prioritizes exact size matches to preserve larger slots for larger vehicles.
         """
-        # Logic: 
-        # 1. Get all free slots.
-        # 2. Filter by size compatibility (Small fits Small, Medium fits S/M, Large fits S/M/L)
-        #    ...Actually usually it's: Vehicle fits in Slot if Slot >= Vehicle.
-        #    Small Car -> Small/Medium/Large Slot.
-        #    Medium Car -> Medium/Large Slot.
-        #    Large Car -> Large Slot.
-        #
-        # Optimization: We want to use the SMALLEST functional slot to save big slots for big cars.
-        
-        statement = select(ParkingSlot).where(ParkingSlot.is_occupied == False)
-        result = await self.session.exec(statement)
-        free_slots = result.all()
-        
-        # Priority: Small Slot (if car fits) > Medium > Large
-        # Mapping sizes to integer for comparison? 
-        # For prototype, let's just look for EXACT match first, then upgrade using python logic.
-        
-        # Robust "Best Fit" Logic:
-        target_size = vehicle_size.lower()
-        
-        # Define hierarchy: Size -> Int
-        size_map = {"small": 1, "medium": 2, "large": 3, "unknown": 2} # Unknown assumes Medium
-        vehicle_size_int = size_map.get(target_size, 2)
-        
-        best_slot = None
-        
-        # Sort slots by size (Small < Medium < Large) to ensure Best Fit
-        # Assuming DB has "small", "medium", "large" strings
-        
-        for slot in free_slots:
-            slot_size_int = size_map.get(slot.size, 0)
+        if not self.supabase:
+            print("[OptimizationAgent] Critical: No DB connection.")
+            return None
+
+        try:
+            # 1. Fetch live inventory of FREE slots
+            response = self.supabase.table("parking_slots").select("*").eq("status", "FREE").execute()
+            free_slots = response.data
             
-            # Condition: Slot must be >= Vehicle
-            if slot_size_int >= vehicle_size_int:
-                # We want the smallest possible slot that fits (Minimize waste)
-                if best_slot is None:
-                    best_slot = slot
-                else:
-                    # Compare current best with new candidate
-                    best_size_int = size_map.get(best_slot.size, 3)
-                    if slot_size_int < best_size_int:
-                        best_slot = slot
-                        
-        return best_slot
+            if not free_slots:
+                print("[OptimizationAgent] Logic: All slots occupied. Optimization impossible.")
+                return None
+
+            # 2. Strategic Sizing Priority
+            # We want the SMALLEST functional slot.
+            size_hierarchy = {
+                "Small": ["Small", "Medium", "Large"],
+                "Medium": ["Medium", "Large"],
+                "Large": ["Large"]
+            }
+            
+            prio_list = size_hierarchy.get(vehicle_size_class, ["Medium", "Large"])
+            
+            for size in prio_list:
+                # Filter slots of this size from the free_slots list
+                candidate_slots = [s for s in free_slots if s.get('size_type') == size]
+                if candidate_slots:
+                    # In a real 'Net', we'd select by distance to gate here. 
+                    # For now, we take the first optimal match.
+                    best_slot = candidate_slots[0]
+                    print(f"[OptimizationAgent] Strategy: Assigned {size} slot to {vehicle_size_class} vehicle (Best Fit).")
+                    return best_slot
+            
+            print(f"[OptimizationAgent] Strategy: No functional slot found for size {vehicle_size_class}.")
+            return None
+
+        except Exception as e:
+            print(f"[OptimizationAgent] Analysis Error: {e}")
+            return None

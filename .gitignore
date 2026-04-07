@@ -1,20 +1,78 @@
-# Environment
+# ============================================================
+# AgentNet: Vision-Driven Multi-Agent Parking System
+# .gitignore
+# ============================================================
+
+# --- Credentials & Secrets ---
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
 
-# Python
+# --- Python ---
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
 
-# Database
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- AI/ML Model Weights ---
+# Uncomment below if you do NOT want to track model weights in git
+# *.pt
+# *.onnx
+# *.pkl
+# *.h5
+
+# --- EasyOCR Cache ---
+.EasyOCR/
+
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- Database & Local Storage ---
 *.db
 *.sqlite3
 chroma_db/
 
-# IDE
+# --- Logs ---
+*.log
+logs/
+
+# --- OS Artifacts ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE & Editors ---
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
-# OS
-Thumbs.db
-.DS_Store
+# --- Testing ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Build Artifacts ---
+*.spec

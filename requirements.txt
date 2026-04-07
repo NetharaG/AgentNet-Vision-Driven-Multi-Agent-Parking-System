@@ -1,15 +1,18 @@
+# AgentNet: Project Dependencies
+
+# --- Web Framework & Server ---
 fastapi
 uvicorn
-sqlmodel
-aiosqlite
-pydantic
-sqlalchemy
-ultralytics
-opencv-python-headless
 python-multipart
-chromadb
-streamlit
-requests
-easyocr
-supabase
+pydantic
 python-dotenv
+
+# --- Database & Infrastructure ---
+supabase
+requests
+
+# --- Computer Vision & AI ---
+ultralytics
+easyocr
+opencv-python-headless
+numpy

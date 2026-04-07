@@ -1,34 +1,28 @@
-import os
-from supabase import create_client, Client
 from typing import Dict, Any
 import datetime
-import time
+from app.utils.supabase_client import supabase_manager
 
 class BillingAgent:
+    """
+    The Auditor of AgentNet.
+    Handles vehicle exits, fee calculation, and real-time slot release.
+    """
+    
     def __init__(self):
-        url: str = os.environ.get("SUPABASE_URL")
-        key: str = os.environ.get("SUPABASE_KEY")
-        if url and key:
-            try:
-                self.supabase: Client = create_client(url, key)
-            except Exception as e:
-                print(f"[BillingAgent] Failed to init Supabase: {e}")
-                self.supabase = None
-        else:
-            self.supabase = None
+        self.supabase = supabase_manager.client
 
     def process_exit(self, license_plate: str) -> Dict[str, Any]:
         """
         Handle Vehicle Exit:
         1. Find Active Session
-        2. Calculate Fee
-        3. Close Session
-        4. Free Slot
+        2. Calculate Fee (Rs 20/hr)
+        3. Close Session & Free Slot
+        4. Log Transaction
         """
         if not self.supabase:
             return {"status": "error", "message": "DB Disconnected"}
             
-        print(f"[BillingAgent] Processing Exit for {license_plate}")
+        print(f"[BillingAgent] Processing Exit for {license_plate}...")
         
         try:
             # 1. Find Session
@@ -39,36 +33,34 @@ class BillingAgent:
                 .execute()
                 
             if not session.data:
-                return {"status": "error", "message": "Vehicle not found inside."}
+                print(f"[BillingAgent] Alert: No active session found for {license_plate}.")
+                return {"status": "error", "message": "Vehicle not found in active registry."}
                 
             record = session.data[0]
             slot_id = record.get('slot_id')
-            entry_time_str = record.get('created_at') # 'created_at' is default timestamp col in Supabase
+            entry_time_str = record.get('entry_time')
             
-            # 2. Calculate Duration
+            # 2. Calculate Duration & Fee
             try:
-                 # Default Supabase format: "2023-10-27T10:00:00+00:00" or similar
+                 # Entry time is stored as ISO format in Supabase
                  entry_dt = datetime.datetime.fromisoformat(entry_time_str.replace("Z", "+00:00"))
             except Exception as e:
                  print(f"[BillingAgent] Time parse error: {e}")
-                 entry_dt = datetime.datetime.now(datetime.timezone.utc) # Fallback
+                 entry_dt = datetime.datetime.now(datetime.timezone.utc)
                  
             exit_dt = datetime.datetime.now(datetime.timezone.utc)
-            duration_hours = (exit_dt - entry_dt).total_seconds() / 3600.0
+            duration_total_sec = (exit_dt - entry_dt).total_seconds()
+            duration_hours = max(0.1, duration_total_sec / 3600.0) # Min 0.1h for billing
             
-            # 3. Calculate Fee (Dynamic Pricing Mock)
             base_rate = 20.0 # Rs per hour
             fee = round(duration_hours * base_rate, 2)
-            if fee < 10: fee = 10 # Min charge
+            if fee < 10: fee = 10 # Minimum charge
             
-            # 4. Update DB
-            
+            # 3. Atomic Updates
             # A. Close Session
             self.supabase.table("active_sessions").update({
                 "is_active": False,
-                # "exit_time": exit_dt.isoformat(), # If column exists
-                "amount_paid": fee,
-                "payment_status": "PAID" 
+                "updated_at": exit_dt.isoformat()
             }).eq("id", record['id']).execute()
             
             # B. Free Slot
@@ -78,14 +70,23 @@ class BillingAgent:
                     "current_vehicle": None
                 }).eq("id", slot_id).execute()
             
+            # C. Log Historical Transaction
+            self.supabase.table("transactions").insert({
+                "license_plate": license_plate,
+                "slot_id": slot_id,
+                "action_type": "EXIT",
+                "metadata": {"fee": fee, "duration_hours": round(duration_hours, 2)}
+            }).execute()
+            
+            print(f"[BillingAgent] Exit complete for {license_plate}. Fee: Rs {fee}.")
+            
             return {
                 "status": "success",
                 "license_plate": license_plate,
                 "duration_hours": round(duration_hours, 2),
                 "fee": fee,
-                "slot_freed": slot_id,
-                "message": "Gate Opening... Payment Successful."
+                "message": f"Exit Approved. Slot released."
             }
         except Exception as e:
-            print(f"[BillingAgent] Error: {e}")
-            return {"status": "error", "message": str(e)}
+            print(f"[BillingAgent] Operational Error: {e}")
+            return {"status": "error", "message": f"Net Communication Error: {str(e)}"}

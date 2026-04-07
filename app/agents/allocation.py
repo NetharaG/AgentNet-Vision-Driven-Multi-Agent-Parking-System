@@ -1,110 +1,97 @@
-import os
-from supabase import create_client, Client
-from typing import Dict, Any, List, Optional
-import json
-import datetime
+from typing import Dict, Any, Optional
+from datetime import datetime
+from app.utils.supabase_client import supabase_manager
+from .optimization import OptimizationAgent
 
 class AllocationAgent:
+    """
+    The Executioner of AgentNet.
+    Coordinates with the OptimizationAgent to secure space and log active sessions.
+    """
+    
     def __init__(self):
-        url: str = os.environ.get("SUPABASE_URL")
-        key: str = os.environ.get("SUPABASE_KEY")
-        if not url or not key:
-            print("[AllocationAgent] WARNING: Supabase credentials not found in environment!")
-            self.supabase = None
-        else:
-            try:
-                self.supabase: Client = create_client(url, key)
-                print("[AllocationAgent] Supabase Client Initialized.")
-            except Exception as e:
-                print(f"[AllocationAgent] Failed to init Supabase: {e}")
-                self.supabase = None
-
-    def allocate_slot(self, vehicle_data: Dict[str, Any]) -> Dict[str, Any]:
+        self.supabase = supabase_manager.client
+        self.strategist = OptimizationAgent()
+        
+    def allocate_slot(self, perception_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Allocates a parking slot based on vehicle size.
+        Agentic Allocation:
+        1. Perceive Vehicle Size.
+        2. Consult Optimization Strategist for Best-Fit.
+        3. Execute DB writes to secure the spot.
         """
         if not self.supabase:
-             return {"allocated": False, "error": "Database not connected", "slot_id": "N/A"}
+            return {"allocated": False, "error": "Database not connected", "slot_id": "N/A"}
 
-        plate = vehicle_data.get("license_plate", "UNKNOWN")
-        dims = vehicle_data.get("dimensions", {})
-        size_class = dims.get("size_class", "Medium")
+        plate = perception_data.get("license_plate", "UNKNOWN")
+        if plate == "UNKNOWN":
+            return {"allocated": False, "error": "Vision Failure: Plate not identified", "slot_id": "N/A"}
+
+        # We assume 'Medium' if not specified by vision
+        size_class = perception_data.get("dimensions", {}).get("size_class", "Medium")
         
-        print(f"[AllocationAgent] Attempting allocation for {plate} ({size_class})")
+        print(f"[AllocationAgent] Coordinating entry for {plate} ({size_class})...")
 
         try:
-            # 1. Check if already parked (prevent double entry)
-            # We filter by status=active if you have a status column, or just existence in active_sessions
+            # 1. Prevent double entry
             existing = self.supabase.table("active_sessions").select("*").eq("license_plate", plate).eq("is_active", True).execute()
             if existing.data:
+                slot_info = existing.data[0]
+                print(f"[AllocationAgent] Alert: Duplicate entry attempt for {plate}.")
                 return {
                     "allocated": False, 
-                    "message": f"Vehicle {plate} is already inside.", 
-                    "slot_id": existing.data[0].get('slot_id')
+                    "message": f"Vehicle {plate} already inside.", 
+                    "slot_id": f"SLOT_{slot_info.get('slot_id')}"
                 }
 
-            # 2. Fetch all free slots
-            # We try to find a slot that matches the size, or a larger one if needed
-            response = self.supabase.table("parking_slots").select("*").eq("status", "FREE").execute()
-            free_slots = response.data
-            
-            allocated_slot = None
-            
-            # Strategy: Best Fit
-            # 1. Try exact size match
-            for slot in free_slots:
-                if slot.get('size_type') == size_class:
-                    allocated_slot = slot
-                    break
-            
-            # 2. If no exact match AND car is small/medium, try larger slots
-            if not allocated_slot:
-                if size_class == 'Small':
-                     for slot in free_slots:
-                        if slot.get('size_type') in ['Medium', 'Large']:
-                            allocated_slot = slot
-                            break
-                elif size_class == 'Medium':
-                    for slot in free_slots:
-                         if slot.get('size_type') == 'Large':
-                            allocated_slot = slot
-                            break
+            # 2. Strategic Consultation (Handover to OptimizationAgent)
+            allocated_slot = self.strategist.find_optimal_slot(size_class)
             
             if allocated_slot:
-                slot_id = allocated_slot['id']
-                print(f"[AllocationAgent] Assigning {slot_id} to {plate}")
+                slot_db_id = allocated_slot.get('id')
+                slot_num = allocated_slot.get('slot_number', f"SLOT_{slot_db_id}")
                 
-                # 3. Transaction: Update Slot & Create Session
+                if not slot_db_id:
+                     raise KeyError("Strategic Error: Slot ID is missing from strategist response.")
                 
-                # A. Update Slot Status
+                print(f"[AllocationAgent] Strategist locked {slot_num}. Completing handover.")
+                
+                # 3. Execution Phase (Atomic Updates)
+                # Mark slot as occupied
                 self.supabase.table("parking_slots").update({
                     "status": "OCCUPIED", 
                     "current_vehicle": plate
-                }).eq("id", slot_id).execute()
+                }).eq("id", slot_db_id).execute()
                 
-                # B. Create Active Session
-                # Using standard ISO format for timestamps if needed, but Supabase handles defaults
+                # Create active session
                 self.supabase.table("active_sessions").insert({
                     "license_plate": plate,
-                    "slot_id": slot_id,
+                    "slot_id": slot_db_id,
                     "vehicle_type": size_class,
                     "is_active": True
-                    # "entry_time" defaults to now() in DB
+                }).execute()
+                
+                # Log to transactions for historical audit
+                self.supabase.table("transactions").insert({
+                    "license_plate": plate,
+                    "slot_id": slot_db_id,
+                    "action_type": "ENTRY",
+                    "metadata": perception_data
                 }).execute()
                 
                 return {
                     "allocated": True,
-                    "slot_id": slot_id,
-                    "vehicle_class": size_class,
-                    "message": f"Assigned to {slot_id}"
+                    "slot_id": slot_num,
+                    "transaction_id": datetime.now().strftime("%Y%m%d%H%M%S"),
+                    "message": f"Secured {slot_num} for {plate}."
                 }
             else:
                 return {
                     "allocated": False,
-                    "slot_id": None,
-                    "message": "Parking Full"
+                    "slot_id": "FULL",
+                    "message": "Strategic Failure: Capacity limit reached."
                 }
                 
         except Exception as e:
-            print(f"[AllocationAgent] Error: {e}")
-            return {"allocated": False, "message": f"DB Error: {str(e)}"}
+            print(f"[AllocationAgent] Operational Error: {e}")
+            return {"allocated": False, "message": f"Net Communication Error: {str(e)}"}

@@ -1,95 +1,70 @@
-import os
-from supabase import create_client, Client
-from typing import Dict, Any, List
-import json
-import cv2
-import numpy as np
-
-# Resolve paths relative to the repo root
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from typing import Dict, Any
+from app.utils.supabase_client import supabase_manager
 
 class VerificationAgent:
+    """
+    The Inspector of AgentNet.
+    Verifies that a vehicle is correctly parked in its allocated slot via QR check.
+    """
+    
     def __init__(self):
-        url: str = os.environ.get("SUPABASE_URL")
-        key: str = os.environ.get("SUPABASE_KEY")
-        if url and key:
-            try:
-                self.supabase: Client = create_client(url, key)
-            except Exception as e:
-                print(f"[VerificationAgent] Failed to init Supabase: {e}")
-                self.supabase = None
-        else:
-            self.supabase = None
-            
-        # Load Zones
-        self.zones_config = {}
-        paths = [
-            os.path.join(_REPO_ROOT, "parking_zones.json"),
-            "parking_zones.json",
-        ]
-        for p in paths:
-            if os.path.exists(p):
-                try:
-                    with open(p, "r") as f:
-                        self.zones_config = json.load(f)
-                    break
-                except Exception as e:
-                    print(f"[VerificationAgent] Failed to load config {p}: {e}")
+        self.supabase = supabase_manager.client
 
-    def verify_active_location(self, license_plate: str, scanned_qr_slot: str) -> Dict[str, Any]:
+    def verify_active_location(self, license_plate: str, scanned_qr: str) -> Dict[str, Any]:
         """
-        Active Verification: User parks and scans QR on the pillar.
+        1. Find active session for plate.
+        2. Cross-reference QR (slot_number) with session's slot_id.
+        3. Confirm if vehicle is in the correct zone.
         """
         if not self.supabase:
-            return {"verified": False, "error": "DB Disconnected"}
-            
-        # 1. Get Assigned Slot for this Car
-        print(f"[VerificationAgent] Verifying {license_plate} at {scanned_qr_slot}")
-        session = self.supabase.table("active_sessions")\
-            .select("*")\
-            .eq("license_plate", license_plate)\
-            .eq("is_active", True)\
-            .execute()
-            
-        if not session.data:
-            return {"verified": False, "message": "No active session found for this vehicle."}
-            
-        assigned_slot_id = session.data[0]['slot_id']
-        
-        # 2. Check Match
-        if scanned_qr_slot == assigned_slot_id:
-            # Update verification status
-            try:
-                self.supabase.table("active_sessions").update({"is_verified": True}).eq("id", session.data[0]['id']).execute()
-            except:
-                pass # Field might not exist yet
-                
-            return {
-                "verified": True, 
-                "message": "Location Verified. Welcome!",
-                "slot_id": assigned_slot_id
-            }
-        else:
-            # Log Anomaly?
-            return {
-                "verified": False, 
-                "message": f"Incorrect Spot! Please move to {assigned_slot_id}",
-                "assigned": assigned_slot_id,
-                "scanned": scanned_qr_slot
-            }
+            return {"status": "error", "message": "DB Disconnected"}
 
-    def passive_audit(self, detected_bboxes: List[Any], frame_shape) -> Dict[str, Any]:
-        """
-        Passive Verification:
-        Check if cars are physically present in slots marked as occupied in DB.
-        """
-        # Placeholder for full IoU logic
-        # 1. Map 2D pixel coordinates to Slots defined in JSON
-        # 2. Check Overlap
-        # 3. Compare with DB status
-        
-        # returning simple count for now
-        return {
-            "occupied_count": len(detected_bboxes),
-            "status": "Audit Complete"
-        }
+        print(f"[VerificationAgent] Verifying location for {license_plate} at {scanned_qr}...")
+
+        try:
+            # 1. Query active session
+            session_resp = self.supabase.table("active_sessions")\
+                .select("*")\
+                .eq("license_plate", license_plate)\
+                .eq("is_active", True)\
+                .execute()
+            
+            if not session_resp.data:
+                return {
+                    "status": "error", 
+                    "message": f"Verification Failed: Vehicle {license_plate} not found in the lot."
+                }
+            
+            active_session = session_resp.data[0]
+            slot_id = active_session["slot_id"]
+            
+            # 2. Cross-reference slot ID with Slot Number (QR)
+            slot_resp = self.supabase.table("parking_slots")\
+                .select("slot_number")\
+                .eq("id", slot_id)\
+                .execute()
+            
+            if not slot_resp.data:
+                return {"status": "error", "message": "Infrastructure Error: Allocated slot not found."}
+            
+            allocated_slot_num = slot_resp.data[0]["slot_number"]
+            
+            # 3. Final Validation
+            if str(scanned_qr).strip().upper() == str(allocated_slot_num).strip().upper():
+                print(f"[VerificationAgent] SUCCESS: {license_plate} verified at {scanned_qr}.")
+                return {
+                    "status": "success",
+                    "license_plate": license_plate,
+                    "slot_number": allocated_slot_num,
+                    "message": "Identity Verified. Location Correct."
+                }
+            else:
+                print(f"[VerificationAgent] ALERT: {license_plate} is in WRONG SLOT (Allocated: {allocated_slot_num}, Scanned: {scanned_qr}).")
+                return {
+                    "status": "error",
+                    "message": f"Verification Failed: You are parked in {scanned_qr}, but your allocated slot is {allocated_slot_num}."
+                }
+
+        except Exception as e:
+            print(f"[VerificationAgent] Operational Error: {e}")
+            return {"status": "error", "message": f"Net Communication Error: {str(e)}"}

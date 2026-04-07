@@ -1,22 +1,32 @@
-from fastapi import FastAPI, UploadFile, File, Body
+from typing import List
+from fastapi import FastAPI, UploadFile, File, Body, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, FileResponse
 import time
-from dotenv import load_dotenv
-load_dotenv()
+import os
 import traceback
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# AgentNet Imports
 from .agents.vision import VisionAgent
 from .agents.allocation import AllocationAgent
 from .agents.verification import VerificationAgent
 from .agents.exit_billing import BillingAgent
+from .agents.sre import SREAgent
 
-app = FastAPI(title="OptiSlot AO - Full Logic")
+from .utils.supabase_client import supabase_manager
 
-# --- SINGLETON AGENTS ---
+load_dotenv()
+
+app = FastAPI(title="AgentNet: Vision-Driven Multi-Agent Parking System")
+
+# --- AGENT SERVICE REGISTRY ---
 vision_agent = VisionAgent()
 allocation_agent = AllocationAgent()
 verification_agent = VerificationAgent()
 billing_agent = BillingAgent()
+sre_agent = SREAgent()
 
 # --- MODELS ---
 class VerifyRequest(BaseModel):
@@ -26,83 +36,137 @@ class VerifyRequest(BaseModel):
 class ExitRequest(BaseModel):
     license_plate: str
 
-# --- WORKFLOW ---
-async def process_entry_workflow(gate_id: str, image_bytes: bytes = None):
+from typing import List
+
+# --- THE AGENTNET PIPELINE (ORCHESTRATION) ---
+
+async def agentnet_entry_pipeline(gate_id: str, frames_bytes: List[bytes]):
     """
-    Full Entry Workflow: Vision -> Allocation.
+    Coordinated Multi-Agent Workflow with Multi-Frame Voting:
+    Vision (Consensus) -> Allocation (Execution) -> SRE (Observation)
     """
-    start_time = time.time()
+    pipeline_start = time.time()
     
-    # 1. Vision Analysis (Real Inference)
-    vehicle_data = await vision_agent.analyze_stream(gate_id, image_bytes)
-    print(f"[Workflow] Vision Result: {vehicle_data}")
+    # 1. Vision Agent: Perceive (with Consensus Voting)
+    v_start = time.time()
+    perception = await vision_agent.analyze_stream(gate_id, frames_bytes)
+    sre_agent.log_latency("VisionAgent", (time.time() - v_start) * 1000)
     
-    # 2. Allocation Logic
-    allocation_result = allocation_agent.allocate_slot(vehicle_data)
-    print(f"[Workflow] Allocation Result: {allocation_result}")
+    # SRE Observation: Log Handover
+    sre_agent.log_handover("VisionAgent", "AllocationAgent", perception)
     
-    duration = (time.time() - start_time) * 1000
+    # 2. Allocation Agent: Strategy & Execution
+    a_start = time.time()
+    execution_result = allocation_agent.allocate_slot(perception)
+    sre_agent.log_latency("AllocationAgent", (time.time() - a_start) * 1000)
     
-    # Return data for the API response
+    # SRE Observation: Log Completion
+    pipeline_duration = (time.time() - pipeline_start) * 1000
+    sre_agent.log_latency("AgentNetPipeline", pipeline_duration)
+    
     return {
-        "license_plate": vehicle_data.get('license_plate'),
-        "vehicle_type": vehicle_data.get('vehicle_type'),
-        "confidence": vehicle_data.get('confidence'),
-        "dimensions": vehicle_data.get('dimensions'),
-        "allocated_slot_id": allocation_result.get('slot_id'), 
-        "allocation_status": allocation_result.get('allocated'),
-        "message": allocation_result.get('message'),
-        "processing_time_ms": round(duration, 2)
+        "perception": perception,
+        "execution": execution_result,
+        "network_health": sre_agent.get_system_report(),
+        "total_ms": round(pipeline_duration, 2)
     }
 
+# --- NEW ANALYTICS & INFRASTRUCTURE ROUTES ---
 
-# --- API ROUTES ---
+@app.get("/api/slots/all")
+async def get_all_slots():
+    """Returns the full inventory of parking bays."""
+    try:
+        resp = supabase_manager.client.table("parking_slots").select("*").order("slot_number").execute()
+        return {"status": "success", "slots": resp.data}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.post("/gate/{gate_id}/entry")
-async def trigger_entry(
-    gate_id: str, 
-    file: UploadFile = File(...)
-):
+@app.get("/api/stats")
+async def get_analytics():
+    """Aggregates vehicle flow and confidence trends."""
+    try:
+        # Mocking complex aggregation for visual performance
+        # In production, these would be real 'GROUP BY' queries on the transactions table
+        stats = {
+            "flow": [12, 19, 3, 5, 2, 3, 10, 15, 25, 22, 18, 12], # Hourly
+            "accuracy": [0.85, 0.92, 0.88, 0.95, 0.89, 0.94], # Trend
+            "peak_heatmap": [[j % 5 for j in range(24)] for i in range(7)] # 7x24 grid
+        }
+        return {"status": "success", "data": stats}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/infrastructure")
+async def get_infra_health():
+    """Real-time health of the AgentNet node topology."""
+    return {"status": "success", "data": sre_agent.get_node_health()}
+
+@app.get("/api/logs")
+async def get_access_logs():
+    """Historical entry/exit audit trail."""
+    try:
+        resp = supabase_manager.client.table("transactions").select("*").order("timestamp", desc=True).limit(20).execute()
+        return {"status": "success", "logs": resp.data}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+# --- EXISTING API ROUTES ---
+
+@app.post("/api/entry")
+async def trigger_entry(files: List[UploadFile] = File(...)):
     """
-    Synchronous Entry Trigger (Wait for Result)
+    Supports single or multiple images (1-10 frames) for Multi-Frame Voting.
     """
     try:
-        # Read bytes immediately
-        image_bytes = await file.read()
-        
-        # Run workflow synchronously
-        result = await process_entry_workflow(gate_id, image_bytes)
-        
-        # Return the full result
-        return {
-            "status": "success", 
-            "data": result
-        }
+        frames_bytes = []
+        # Limit to 10 frames for stability
+        for file in files[:10]:
+            content = await file.read()
+            frames_bytes.append(content)
+            
+        result = await agentnet_entry_pipeline("GATE_MAIN", frames_bytes)
+        return {"status": "success", "data": result}
     except Exception as e:
         print(traceback.format_exc())
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e), "traceback": traceback.format_exc()}
-        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.post("/verify")
+@app.post("/api/verify")
 async def verify_parking(req: VerifyRequest):
-    """
-    User Scans QR Code to Verify Location
-    """
     try:
+        v_start = time.time()
         result = verification_agent.verify_active_location(req.user_id, req.scanned_qr)
+        sre_agent.log_latency("VerificationAgent", (time.time() - v_start) * 1000)
         return {"status": "success", "data": result}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.post("/exit")
+@app.post("/api/exit")
 async def process_exit(req: ExitRequest):
-    """
-    Process Exit and Billing
-    """
     try:
+        b_start = time.time()
         result = billing_agent.process_exit(req.license_plate)
+        sre_agent.log_latency("BillingAgent", (time.time() - b_start) * 1000)
         return {"status": "success", "data": result}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/health")
+async def get_network_health():
+    return sre_agent.get_system_report()
+
+# --- STATIC DASHBOARD SERVING ---
+
+# Ensure static directory exists
+static_path = os.path.join(os.path.dirname(__file__), "static")
+if not os.path.exists(static_path):
+    os.makedirs(static_path)
+
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+@app.get("/")
+async def serve_dashboard():
+    dashboard_file = os.path.join(static_path, "index.html")
+    if os.path.exists(dashboard_file):
+        return FileResponse(dashboard_file)
+    return {"message": "AgentNet: Dashboard construction in progress. Please check /docs for API."}
